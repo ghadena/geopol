@@ -87,7 +87,9 @@ def data():
     return jsonify({
         "nodes": nodes_list,
         "edges": edges_list,
-        "relationship_types": sorted(edges_df["relationship"].dropna().unique().tolist())
+        "relationship_types": sorted(edges_df["relationship"].dropna().unique().tolist()),
+        "min_date": df["date"].min(),
+        "max_date": df["date"].max()
     })
 
 if __name__ == "__main__":
