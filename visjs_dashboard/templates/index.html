@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Interactive Graph Dashboard</title>
+  <meta charset="UTF-8">
+  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@15.7.1/dist/nouislider.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/nouislider@15.7.1/dist/nouislider.min.js"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      overflow-y: auto;
+      min-height: 1000px;
+    }
+
+    body {
+      margin-top: 60px; /* ✅ Push page content down visibly */
+    }
+
+    .controls {
+      padding: 15px;
+      background: #f7f7f7;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      align-items: center;
+      position: relative;
+      z-index: 1000;
+    }
+
+    #network {
+      width: 100%;
+      height: calc(100vh - 130px);
+      border: 1px solid lightgray;
+      margin-top: 10px;
+      z-index: 1;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      font-size: 14px;
+    }
+
+    select, input {
+      padding: 4px;
+      font-size: 14px;
+    }
+
+    button {
+      padding: 6px 12px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body style="margin-top: 60px;"> <!-- ✅ pushes content down -->
+
+  <div class="controls">
+    <label>Sentiment:
+      <select id="sentiment">
+        <option>All</option>
+        <option>FRIENDLY</option>
+        <option>HOSTILE</option>
+        <option>NEUTRAL</option>
+      </select>
+    </label>
+
+    <label>Relationship:
+      <select id="relationship">
+        <option>All</option>
+        <option>SUPPORTS</option>
+        <option>OPPOSES</option>
+        <option>WORKS_WITH</option>
+      </select>
+    </label>
+
+    <label>Search:
+      <input type="text" id="search" placeholder="Entity name">
+    </label>
+
+    <label>Date Range:
+      <input type="date" id="startDate">
+      <input type="date" id="endDate">
+    </label>
+
+    <button onclick="loadGraph()">Apply Filters</button>
+    <button onclick="resetView()">Reset View</button>
+  </div>
+
+  <div id="network"></div>
+
+  <script src="{{ url_for('static', filename='js/graph.js') }}"></script>
+</body>
+</html>
