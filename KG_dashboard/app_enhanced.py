@@ -12,8 +12,8 @@ genai.configure(api_key="AIzaSyBEHPnDqF4nlQ8BlXJEo2LrAs9V5Sq7KIw")
 
 app = Flask(__name__)
 
-edges_df = pd.read_csv("https://raw.githubusercontent.com/ghadena/geopol/refs/heads/main/data/processed/edges.csv?token=GHSAT0AAAAAADCLEU3AR22NEOXYRELW3KKO2BEYU4Q")
-entities_df = pd.read_csv("https://raw.githubusercontent.com/ghadena/geopol/refs/heads/main/data/processed/entities.csv?token=GHSAT0AAAAAADCLEU3B7THDUR65VFVMRQ7S2BEYV4Q")
+edges_df = pd.read_csv("https://raw.githubusercontent.com/ghadena/geopol/refs/heads/main/data/processed/edges.csv")
+entities_df = pd.read_csv("https://raw.githubusercontent.com/ghadena/geopol/refs/heads/main/data/processed/entities.csv")
 
 edges_df["source"] = edges_df["source"].str.strip()
 edges_df["target"] = edges_df["target"].str.strip()
