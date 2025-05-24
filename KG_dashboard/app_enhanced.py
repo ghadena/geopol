@@ -374,8 +374,8 @@ from datetime import datetime
 app = Flask(__name__)
 
 # Load preprocessed edges and entities
-edges_df = pd.read_csv("/Users/ghadena/Desktop/geopol/notebooks/edges_new_filtered.csv")
-entities_df = pd.read_csv("/Users/ghadena/Desktop/geopol/notebooks/ents_long.csv")
+edges_df = pd.read_csv("KG_dashboard/data/edges_new_filtered.csv")
+entities_df = pd.read_csv("KG_dashboard/data/edges_new_filtered.csv")
 
 # Clean up whitespace and types
 edges_df["source"] = edges_df["source"].astype(str).str.strip()
