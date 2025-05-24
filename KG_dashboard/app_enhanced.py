@@ -374,8 +374,8 @@ from datetime import datetime
 app = Flask(__name__)
 
 # Load preprocessed edges and entities
-edges_df = pd.read_csv("KG_dashboard/data/edges_new_filtered.csv")
-entities_df = pd.read_csv("KG_dashboard/data/edges_new_filtered.csv")
+edges_df = pd.read_csv("https://raw.githubusercontent.com/ghadena/geopol/refs/heads/main/KG_dashboard/data/edges_new_filtered.csv")
+entities_df = pd.read_csv("https://raw.githubusercontent.com/ghadena/geopol/refs/heads/main/KG_dashboard/data/ents_long.csv")
 
 # Clean up whitespace and types
 edges_df["source"] = edges_df["source"].astype(str).str.strip()
@@ -384,15 +384,11 @@ edges_df["article_source"] = edges_df["article_source"].astype(str).str.lower()
 edges_df["date"] = edges_df["date"].astype(str)
 entities_df["entity"] = entities_df["entity"].astype(str).str.strip()
 entities_df["entity_type"] = entities_df["entity_type"].astype(str).str.strip()
-entities_df["article_source"] = entities_df["article_source"].astype(str).str.lower()
+#entities_df["article_source"] = entities_df["article_source"].astype(str).str.lower()
 
 @app.route("/")
-def select_map():
-    return render_template("select_map.html")
-
-@app.route("/map/<source>")
-def map_by_source(source):
-    return render_template("index.html", source=source)
+def index():
+    return render_template("index.html")
 
 def safe_parse_date(val):
     try:
@@ -409,12 +405,18 @@ def data():
     start_date = safe_parse_date(request.args.get("start_date"))
     end_date = safe_parse_date(request.args.get("end_date"))
     direction = request.args.get("direction", "all")
-    article_source = request.args.get("article_source", "us").lower()
-
-    df = edges_df[edges_df["article_source"].str.lower() == article_source].copy()
+    #article_source = request.args.get("article_source", "us").lower()
+    #article_source = request.args.get("article_source", "All")
+    article_source = request.args.get("article_source", "").lower()
+    df = edges_df.copy()
+    if article_source and article_source != "all":
+        df = df[df["article_source"].str.lower() == article_source]
+    # if article_source != "All":
+    #     df = df[df["article_source"].str.lower() == article_source.lower()]
+    # # df = edges_df[edges_df["article_source"].str.lower() == article_source].copy()
     
-    if article_source:
-        df = df[df["article_source"] == article_source.lower()]
+    # if article_source:
+    #     df = df[df["article_source"] == article_source.lower()]
 
     if sentiment != "All":
         df = df[df["sentiment"] == sentiment]

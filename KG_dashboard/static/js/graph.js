@@ -27,7 +27,9 @@ function getSourceShape(source) {
 }
 
 function loadGraph() {
-    const articleSource = document.getElementById("articleSourceSelect").value;
+    //const articleSource = document.getElementById("articleSourceSelect").value;
+    const articleSourceEl = document.getElementById("articleSourceSelect");
+    const articleSource = articleSourceEl ? articleSourceEl.value : "all";
     const sentiment = document.getElementById('sentiment').value;
     const relationship = document.getElementById('relationship').value;
     const search = document.getElementById('search').value;
