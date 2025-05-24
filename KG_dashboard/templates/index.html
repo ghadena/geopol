@@ -1,3 +1,4 @@
+<!-- ✅ Enhanced index.html with source filter and date range -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -8,54 +9,54 @@
     <script src="https://cdn.jsdelivr.net/npm/nouislider@15.7.1/dist/nouislider.min.js"></script>
     <style>
         html, body {
-        margin: 0;
-        padding: 0;
-        font-family: Arial, sans-serif;
-        overflow-y: auto;
-        min-height: 1000px;
-    }
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            overflow-y: auto;
+            min-height: 1000px;
+        }
 
-    body {
-      margin-top: 60px; /* ✅ Push page content down visibly */
-    }
+        body {
+            margin-top: 60px;
+        }
 
-    .controls {
-        padding: 15px;
-        background: #f7f7f7;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 15px;
-        align-items: center;
-        position: relative;
-        z-index: 1000;
-    }
+        .controls {
+            padding: 15px;
+            background: #f7f7f7;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+            position: relative;
+            z-index: 1000;
+        }
 
-    #network {
-        width: 100%;
-        height: calc(100vh - 130px);
-        border: 1px solid lightgray;
-        margin-top: 10px;
-        z-index: 1;
-    }
+        #network {
+            width: 100%;
+            height: calc(100vh - 160px);
+            border: 1px solid lightgray;
+            margin-top: 10px;
+            z-index: 1;
+        }
 
-    label {
-        display: flex;
-        flex-direction: column;
-        font-size: 14px;
-    }
+        label {
+            display: flex;
+            flex-direction: column;
+            font-size: 14px;
+        }
 
-    select, input {
-        padding: 4px;
-        font-size: 14px;
-    }
+        select, input {
+            padding: 4px;
+            font-size: 14px;
+        }
 
-    button {
-        padding: 6px 12px;
-        font-size: 14px;
-    }
+        button {
+            padding: 6px 12px;
+            font-size: 14px;
+        }
     </style>
 </head>
-<body style="margin-top: 60px;"> <!-- ✅ pushes content down -->
+<body>
     <div id="legend" style="position:absolute; top:10px; right:10px; background:white; padding:10px; border:1px solid #ccc; z-index:1001;"> 
         <strong>Legend:</strong>
         <span style="background:#ffd700; padding:4px 8px; margin-right:8px;">People</span>
@@ -63,43 +64,59 @@
         <span style="background:#9467bd; padding:4px 8px; margin-right:8px;">Locations</span>
         <span style="background:#2ca02c; padding:4px 8px; margin-right:8px;">Political Parties</span>
     </div>
+
     <div class="controls">
-    <label>Sentiment:
-        <select id="sentiment">
-        <option>All</option>
-        <option>FRIENDLY</option>
-        <option>HOSTILE</option>
-        <option>NEUTRAL</option>
-        </select>
-    </label>
-
-    <label>Relationship:
-        <select id="relationship">
-        <option>All</option>
-        <option>SUPPORTS</option>
-        <option>OPPOSES</option>
-        <option>WORKS_WITH</option>
-        </select>
-    </label>
-
-    <label>Search:
-        <div style="display: flex; gap: 8px; align-items: center;">
-            <input type="text" id="search" placeholder="Entity name">
-            <button onclick="clearSearch()" style="padding: 4px 8px;">Show All</button>
-        </div>
+        <label>Sentiment:
+            <select id="sentiment">
+                <option>All</option>
+                <option>FRIENDLY</option>
+                <option>HOSTILE</option>
+                <option>NEUTRAL</option>
+            </select>
         </label>
 
-
-    <label>Direction:
-        <select id="direction">
-            <option value="all">All</option>
-            <option value="incoming">Incoming</option>
-            <option value="outgoing">Outgoing</option>
-        </select>
+        <label>Relationship:
+            <select id="relationship">
+                <option>All</option>
+                <option>SUPPORTS</option>
+                <option>OPPOSES</option>
+                <option>WORKS_WITH</option>
+            </select>
         </label>
 
-    <button onclick="loadGraph()">Apply Filters</button>
-    <button onclick="resetView()">Reset View</button>
+        <label>Article Source:
+            <select id="articleSourceSelect" onchange="loadGraph()" style="min-width:120px;">
+              <option value="us">🇺🇸 US</option>
+              <option value="french">🇫🇷 French</option>
+              <option value="german">🇩🇪 German</option>
+            </select>
+          </label>
+
+        <label>Date From:
+            <input type="date" id="dateFrom">
+        </label>
+
+        <label>Date To:
+            <input type="date" id="dateTo">
+        </label>
+
+        <label>Search:
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="text" id="search" placeholder="Entity name">
+                <button onclick="clearSearch()" style="padding: 4px 8px;">Show All</button>
+            </div>
+        </label>
+
+        <label>Direction:
+            <select id="direction">
+                <option value="all">All</option>
+                <option value="incoming">Incoming</option>
+                <option value="outgoing">Outgoing</option>
+            </select>
+        </label>
+
+        <button onclick="loadGraph()">Apply Filters</button>
+        <button onclick="resetView()">Reset View</button>
     </div>
 
     <div id="network"></div>

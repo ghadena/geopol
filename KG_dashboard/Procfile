@@ -1,0 +1,1 @@
+web: gunicorn KG_dashboard.app_enhanced:app
