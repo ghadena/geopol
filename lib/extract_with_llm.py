@@ -12,18 +12,19 @@ from datetime import datetime
 # --- CONFIGURE GOOGLE API ---
 load_dotenv()
 configure(api_key=os.environ["GOOGLE_API_KEY"])
-model = GenerativeModel("gemini-2.0-flash-lite")
+model = GenerativeModel("gemini-1.5-flash-8b")
 
 # --- SETTINGS ---
-TEXT_COLUMN = "text"
+TEXT_COLUMN = "article_text"
+DESC_COLUMN = "description"
 ROW_ID_COLUMN = "url"
+LANG_COLUMN = "language"
 SLEEP_BETWEEN_BATCHES = 1
 BACKUP_EVERY = 200
 
-MASTER_CSV = "gemini_results_master2.csv"
-ERROR_LOG_CSV = "gemini_errors2.csv"
-BACKUP_FOLDER = "backups2"
-
+MASTER_CSV = "gemini_results_master.csv"
+ERROR_LOG_CSV = "gemini_errors.csv"
+BACKUP_FOLDER = "backups"
 
 # --- INITIALIZE SPARK ---
 spark = SparkSession.builder.getOrCreate()
@@ -35,10 +36,11 @@ def clean_json_response(response_content):
         return match.group(0)
     return None
 
-# --- PROMPT FUNCTION ---
-def build_prompt(text):
+# --- PROMPT FUNCTIONS ---
+def build_prompt(text, lang):
     return f"""
-Extract named entities and relationships from the following news article. Follow these instructions carefully:
+This text is in: {lang}
+Read and understand the following news article in its original language. Then, extract the following information and reply ONLY in English, in the exact JSON format below:
 
 1. Extract named entities and classify them into the following categories:
    - people (individuals, nominative form only)
@@ -54,7 +56,9 @@ Extract named entities and relationships from the following news article. Follow
 
 4. If no entities or relationships are found, return this structure with empty lists.
 
-Return your output in **this exact JSON format**:
+5. Indicate if the text is relevant to the German or French elections.
+
+Reply ONLY in this exact JSON format, and in English:
 
 {{
   "entities": {{
@@ -71,17 +75,30 @@ Return your output in **this exact JSON format**:
       "relationship": "supports",
       "sentiment": "FRIENDLY"
     }}
-  ]
+  ],
+  "relevant_to_german_or_french_elections": true
 }}
 
 Text:
 {text}
 """
 
-# --- MAIN FUNCTION ---
-def main(source_table):
-    print("📥 Loading table...")
-    df = spark.read.table(source_table).select(ROW_ID_COLUMN, TEXT_COLUMN).toPandas()
+def main(source):
+    print("📥 Loading data...")
+
+    # Load data based on input type
+    if isinstance(source, pd.DataFrame):
+        df = source
+    elif isinstance(source, str):
+        if source.endswith('.csv'):
+            df = pd.read_csv(source)
+        elif source.endswith('.parquet'):
+            df = pd.read_parquet(source)
+        else:
+            # Assume it's a Spark table name
+            df = spark.read.table(source).toPandas()
+    else:
+        raise ValueError("Unsupported source type. Provide a DataFrame, CSV/Parquet file path, or Spark table name.")
 
     # --- Ensure the backups directory exists ---
     if not os.path.exists(BACKUP_FOLDER):
@@ -99,6 +116,13 @@ def main(source_table):
     else:
         completed_urls = set()
 
+    # --- Filter for allowed languages ---
+    allowed_langs = ["en", "fr", "de"]
+    if LANG_COLUMN in df.columns:
+        df = df[df[LANG_COLUMN].isin(allowed_langs)]
+    else:
+        print("⚠️ No language column found. Skipping language filtering.")
+
     results = []
     full_results = []
     errors = []
@@ -106,12 +130,16 @@ def main(source_table):
     for i in tqdm(range(len(df))):
         row = df.iloc[i]
         row_id = row[ROW_ID_COLUMN]
-        text = row[TEXT_COLUMN]
-
+        lang = row[LANG_COLUMN] if LANG_COLUMN in row else "en"
+        text = row.get(TEXT_COLUMN, "")
         if not isinstance(text, str) or len(text.strip()) == 0:
-            continue
+            text = row.get(DESC_COLUMN, "")
+        if not isinstance(text, str) or len(text.strip()) == 0:
+            continue  # skip if both are empty
+        text = text.strip()
 
-        prompt = build_prompt(text)
+        # Select prompt based on language
+        prompt = build_prompt(text, lang)
 
         try:
             response = model.generate_content(prompt)
@@ -136,6 +164,7 @@ def main(source_table):
 
         extracted_entities = {}
         relationships = []
+        relevant_to_elections = None
 
         if response_text:
             try:
@@ -145,14 +174,17 @@ def main(source_table):
                 parsed = json.loads(cleaned_json)
                 extracted_entities = parsed.get("entities", {})
                 relationships = parsed.get("entity_relationships", [])
+                relevant_to_elections = parsed.get("relevant_to_german_or_french_elections", None)
             except Exception as parse_error:
                 print(f"[JSON ERROR] row {i} ({row_id}): {parse_error}")
                 errors.append({"url": row_id, "error": str(parse_error)})
 
         row_result = {
             "url": row_id,
+            "lang": lang,
             "extracted_entities": extracted_entities,
-            "entity_relationships": relationships
+            "entity_relationships": relationships,
+            "relevant_to_german_or_french_elections": relevant_to_elections
         }
 
         results.append(row_result)

@@ -8,6 +8,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
 from xgboost import XGBClassifier
+from sklearn.base import clone
 
 
 from sklearn.metrics import (
@@ -18,10 +19,12 @@ from sklearn.metrics import (
 )
 
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.calibration import CalibratedClassifierCV, calibration_curve
+from sklearn.compose import ColumnTransformer
+from sklearn.model_selection import StratifiedKFold
 
 from imblearn.pipeline import Pipeline 
 from imblearn.over_sampling import SMOTE
@@ -34,11 +37,12 @@ class ResultCollector:
     def __init__(self):
         self.results = OrderedDict() 
         
-    def add_model(self, name, train_error, test_error):
+    def add_model(self, name, train_rmse, test_rmse, expected_loss):
         """Add or update a model's results."""
         self.results[name] = {
-            'Train RMSE': train_error,
-            'Test RMSE': test_error
+            'Train RMSE': train_rmse,
+            'Test RMSE': test_rmse,
+            'Expected Loss' : expected_loss, 
         }
         return self.get_table()
     
@@ -138,55 +142,111 @@ def diagnostics(y_train, y_train_probs, y_valid, y_valid_probs, model_name="Mode
 }
 
 
+# # Function to calculate TP % and FP % from predictions
+# def calculate_tp_fp_percent(y_true, y_pred):
+#     cm = confusion_matrix(y_true, y_pred)
+#     tn, fp, fn, tp = cm.ravel()
+#     tp_percent = tp / (tp + fn) if (tp + fn) > 0 else 0
+#     fp_percent = fp / (fp + tn) if (fp + tn) > 0 else 0
+#     return tp_percent, fp_percent
+
 # Confusion matrix helper function
-def matrix(y_train, train_probs, y_valid, y_valid_probs, model_name="Model"):
-    # 1️⃣ Find best threshold based on F1
-    from sklearn.metrics import precision_recall_fscore_support
 
-    thresholds = np.linspace(0.01, 0.99, 100)
-    f1_scores = []
 
+def compute_expected_loss(y_true, y_probs, thresholds=np.linspace(0.01, 0.99, 100),
+                          fp_cost=1, fn_cost=4):
+    losses = []
     for t in thresholds:
-        y_pred = (y_valid_probs >= t).astype(int)
-        _, _, f1, _ = precision_recall_fscore_support(y_valid, y_pred, average="binary")
-        f1_scores.append(f1)
+        y_pred = (y_probs >= t).astype(int)
+        tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+        total = tn + fp + fn + tp
+        loss = (fp_cost * fp + fn_cost * fn) / total
+        losses.append(loss)
+    best_idx = np.argmin(losses)
+    return thresholds[best_idx], losses[best_idx]
 
-    best_idx = np.argmax(f1_scores)
-    best_threshold = thresholds[best_idx]
+
+def matrix(y_train, train_probs, y_valid, y_valid_probs, model_name="Model"):
+    # # 1️⃣ Find best threshold based on F1
+    # from sklearn.metrics import precision_recall_fscore_support
+
+    # thresholds = np.linspace(0.01, 0.99, 100)
+    # f1_scores = []
+
+    # for t in thresholds:
+    #     y_pred = (y_valid_probs >= t).astype(int)
+    #     _, _, f1, _ = precision_recall_fscore_support(y_valid, y_pred, average="binary")
+    #     f1_scores.append(f1)
+
+    # best_idx = np.argmax(f1_scores)
+    # best_threshold = thresholds[best_idx]
+    best_threshold, expected_loss = compute_expected_loss(y_valid, y_valid_probs)
 
     # 2️⃣ Confusion Matrix
     y_pred = (y_valid_probs >= best_threshold).astype(int)
     cm = confusion_matrix(y_valid, y_pred, normalize='true')
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=[0, 1])
     disp.plot(cmap="Blues", values_format=".2%")
-    plt.title(f"{model_name} - Confusion Matrix (Threshold = {best_threshold:.2f})")
+    plt.title(f"Confusion Matrix @ Cost-Optimized Threshold = {best_threshold:.2f}")
     plt.grid(False)
     plt.tight_layout()
     plt.show()
+    return best_threshold
 
-def run_model_with_gridsearch(name, pipe, param_grid, X_train, y_train, X_valid, y_valid, results, best_models, diagnostics_fn, collector=None):
+
+
+
+def run_model_with_gridsearch(name, pipe, param_grid, X_train_full, y_train, X_valid_full, y_valid,
+                              results, best_models, diagnostics_fn, collector=None,
+                              feature_list=None, categorical_features=None):
     print(f"🔍 Running model: {name}")
 
-    grid = GridSearchCV(pipe, param_grid, cv=5, scoring='roc_auc', n_jobs=-1, verbose=0)
+    # Subset features
+    if feature_list is not None:
+        X_train = X_train_full[feature_list]
+        X_valid = X_valid_full[feature_list]
+    else:
+        X_train = X_train_full.copy()
+        X_valid = X_valid_full.copy()
+
+    # Build preprocessor
+    preprocessor = ColumnTransformer([
+        ('num', StandardScaler(), [f for f in feature_list if f not in categorical_features]),
+        ('cat', OneHotEncoder(handle_unknown='ignore'), [f for f in feature_list if f in categorical_features])
+    ])
+
+    # Inject preprocessor into pipeline dynamically if not already there
+    if not any(step[0] == 'preprocessor' for step in pipe.steps):
+        pipe.steps.insert(0, ('preprocessor', preprocessor))
+    
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    cloned_pipe = clone(pipe)
+    grid = GridSearchCV(cloned_pipe, param_grid, cv=cv, scoring='roc_auc', n_jobs=-1, verbose=0)
     grid.fit(X_train, y_train)
 
     best_model = grid.best_estimator_
     best_models[name] = best_model
 
-    best_model.fit(X_train, y_train)
     train_probs = best_model.predict_proba(X_train)[:, 1]
     valid_probs = best_model.predict_proba(X_valid)[:, 1]
 
     output = diagnostics_fn(y_train, train_probs, y_valid, valid_probs, model_name=name)
     results.append(output)
 
-    # log RMSE to collector if provided
-    if collector is not None:
-        rmse_train = np.sqrt(mean_squared_error(y_train, train_probs))
-        rmse_valid = np.sqrt(mean_squared_error(y_valid, valid_probs))
-        collector.add_model(name, rmse_train, rmse_valid)
-        print(f"📊 {name}: Train RMSE = {rmse_train:.4f}, Valid RMSE = {rmse_valid:.4f}")
 
+        # --- Business Loss Summary (Only Print, Do Not Log) ---
+    threshold, expected_loss = compute_expected_loss(y_valid, valid_probs)
+    print(f"\n📉 Business Cost Evaluation for {name}:")
+    print(f"🔹 Best Threshold (Cost-Optimized): {threshold:.3f}")
+    print(f"🔹 Expected Loss: {expected_loss:.3f}  [FN cost = 4, FP cost = 1]\n")
+    
+    if collector is not None:
+        train_rmse = np.sqrt(mean_squared_error(y_train, train_probs))
+        test_rmse = np.sqrt(mean_squared_error(y_valid, valid_probs))
+        expected_loss = expected_loss
+        collector.add_model(name, train_rmse, test_rmse, expected_loss)
+        print(f"📊 {name}: Train RMSE = {train_rmse:.4f}, Valid RMSE = {test_rmse:.4f}")
+    
     print(f"✅ Finished: {name}\n")
     return best_model
 
