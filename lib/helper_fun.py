@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+import inspect
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
@@ -59,32 +60,68 @@ def random_split(df, label_col="relevance_text"):
     y = df[label_col]
     return train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
 
-# Diagnostics helper function
-def diagnostics(y_train, y_train_probs, y_valid, y_valid_probs, model_name="Model"):
-    
-    # 1️⃣ Find best threshold based on F1
+def compute_expected_loss(y_true, y_probs, thresholds=np.linspace(0.01, 0.99, 100),
+                          fp_cost=1, fn_cost=4):
+    losses = []
+    for t in thresholds:
+        y_pred = (y_probs >= t).astype(int)
+        tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+        total = tn + fp + fn + tp
+        loss = (fp_cost * fp + fn_cost * fn) / total
+        losses.append(loss)
+    best_idx = np.argmin(losses)
+    return thresholds[best_idx], losses[best_idx]
+def matrix(y_train, train_probs, y_valid, y_valid_probs, model_name="Model", show_threshold_plot=False):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+
+    # 1️⃣ Compute best threshold based on expected loss
     thresholds = np.linspace(0.01, 0.99, 100)
-    f1_scores = []
+    losses = []
 
     for t in thresholds:
-        y_pred = (y_valid_probs >= t).astype(int)
-        _, _, f1, _ = precision_recall_fscore_support(y_valid, y_pred, average="binary")
-        f1_scores.append(f1)
+        y_pred_t = (y_valid_probs >= t).astype(int)
+        tn, fp, fn, tp = confusion_matrix(y_valid, y_pred_t).ravel()
+        total = tn + fp + fn + tp
+        loss = (1 * fp + 4 * fn) / total  # FP cost=1, FN cost=4
+        losses.append(loss)
 
-    best_idx = np.argmax(f1_scores)
+    best_idx = np.argmin(losses)
     best_threshold = thresholds[best_idx]
+    expected_loss = losses[best_idx]
 
-    # 2️⃣ Confusion Matrix
+    # 2️⃣ Confusion Matrix at best threshold
     y_pred = (y_valid_probs >= best_threshold).astype(int)
     cm = confusion_matrix(y_valid, y_pred, normalize='true')
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=[0, 1])
     disp.plot(cmap="Blues", values_format=".2%")
-    plt.title(f"{model_name} - Confusion Matrix (Threshold = {best_threshold:.2f})")
+    plt.title(f"Confusion Matrix @ Cost-Optimized Threshold = {best_threshold:.2f}")
     plt.grid(False)
     plt.tight_layout()
     plt.show()
 
-    # 3️⃣ ROC Curve
+    # 3️⃣ Threshold vs Expected Loss Plot
+    if show_threshold_plot:
+        plt.figure(figsize=(8, 5))
+        plt.plot(thresholds, losses, label="Expected Loss")
+        plt.axvline(best_threshold, color='red', linestyle='--', label=f'Best Threshold = {best_threshold:.2f}')
+        plt.xlabel("Threshold")
+        plt.ylabel("Expected Loss")
+        plt.title("Threshold vs Expected Loss")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+    return best_threshold, y_pred
+
+
+def diagnostics(y_train, y_train_probs, y_valid, y_valid_probs, model_name="Model"):
+    # 1️⃣ Get best threshold and predicted y_valid
+    best_threshold, y_pred = matrix(y_train, y_train_probs, y_valid, y_valid_probs)
+
+    # 2️⃣ ROC Curve
     fpr, tpr, _ = roc_curve(y_valid, y_valid_probs)
     auc_score = roc_auc_score(y_valid, y_valid_probs)
 
@@ -99,7 +136,7 @@ def diagnostics(y_train, y_train_probs, y_valid, y_valid_probs, model_name="Mode
     plt.tight_layout()
     plt.show()
 
-    # 4️⃣ Calibration Curve
+    # 3️⃣ Calibration Curve
     prob_true, prob_pred = calibration_curve(y_valid, y_valid_probs, n_bins=10, strategy='quantile')
     plt.figure(figsize=(7, 5))
     plt.plot(prob_pred, prob_true, marker='o', label='Model')
@@ -112,7 +149,7 @@ def diagnostics(y_train, y_train_probs, y_valid, y_valid_probs, model_name="Mode
     plt.tight_layout()
     plt.show()
 
-    # 6️⃣ Histogram by Class
+    # 4️⃣ Histogram by Class
     plt.figure(figsize=(9, 5))
     sns.histplot(x=y_valid_probs, hue=y_valid, bins=30, kde=True, stat='density', common_norm=False)
     plt.axvline(best_threshold, color='red', linestyle='--', label=f'Threshold = {best_threshold:.2f}')
@@ -122,77 +159,23 @@ def diagnostics(y_train, y_train_probs, y_valid, y_valid_probs, model_name="Mode
     plt.tight_layout()
     plt.show()
 
-    # 7️⃣ Classification Report
+    # 5️⃣ Classification Report
     print(f"\n📊 Classification Report (Threshold = {best_threshold:.2f}):")
     print(classification_report(y_valid, y_pred, digits=3))
 
-    # 8️⃣ RMSE on train and test
+    # 6️⃣ RMSE on train and test
     rmse_train = np.sqrt(mean_squared_error(y_train, y_train_probs))
     rmse_valid = np.sqrt(mean_squared_error(y_valid, y_valid_probs))
     print(f"\n📈 Train RMSE: {rmse_train:.4f}")
     print(f"📈 Test  RMSE: {rmse_valid:.4f}")
 
     return {
-    "Model": model_name,
-    "Threshold": best_threshold,
-    "Train RMSE": rmse_train,
-    "Test RMSE": rmse_valid,
-    "AUC": auc_score,
-    "F1": f1_scores[best_idx]
-}
-
-
-# # Function to calculate TP % and FP % from predictions
-# def calculate_tp_fp_percent(y_true, y_pred):
-#     cm = confusion_matrix(y_true, y_pred)
-#     tn, fp, fn, tp = cm.ravel()
-#     tp_percent = tp / (tp + fn) if (tp + fn) > 0 else 0
-#     fp_percent = fp / (fp + tn) if (fp + tn) > 0 else 0
-#     return tp_percent, fp_percent
-
-# Confusion matrix helper function
-
-
-def compute_expected_loss(y_true, y_probs, thresholds=np.linspace(0.01, 0.99, 100),
-                          fp_cost=1, fn_cost=4):
-    losses = []
-    for t in thresholds:
-        y_pred = (y_probs >= t).astype(int)
-        tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-        total = tn + fp + fn + tp
-        loss = (fp_cost * fp + fn_cost * fn) / total
-        losses.append(loss)
-    best_idx = np.argmin(losses)
-    return thresholds[best_idx], losses[best_idx]
-
-
-def matrix(y_train, train_probs, y_valid, y_valid_probs, model_name="Model"):
-    # # 1️⃣ Find best threshold based on F1
-    # from sklearn.metrics import precision_recall_fscore_support
-
-    # thresholds = np.linspace(0.01, 0.99, 100)
-    # f1_scores = []
-
-    # for t in thresholds:
-    #     y_pred = (y_valid_probs >= t).astype(int)
-    #     _, _, f1, _ = precision_recall_fscore_support(y_valid, y_pred, average="binary")
-    #     f1_scores.append(f1)
-
-    # best_idx = np.argmax(f1_scores)
-    # best_threshold = thresholds[best_idx]
-    best_threshold, expected_loss = compute_expected_loss(y_valid, y_valid_probs)
-
-    # 2️⃣ Confusion Matrix
-    y_pred = (y_valid_probs >= best_threshold).astype(int)
-    cm = confusion_matrix(y_valid, y_pred, normalize='true')
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=[0, 1])
-    disp.plot(cmap="Blues", values_format=".2%")
-    plt.title(f"Confusion Matrix @ Cost-Optimized Threshold = {best_threshold:.2f}")
-    plt.grid(False)
-    plt.tight_layout()
-    plt.show()
-    return best_threshold
-
+        "Model": model_name,
+        "Threshold": best_threshold,
+        "Train RMSE": rmse_train,
+        "Test RMSE": rmse_valid,
+        "AUC": auc_score,
+    }
 
 
 
@@ -222,7 +205,12 @@ def run_model_with_gridsearch(name, pipe, param_grid, X_train_full, y_train, X_v
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     cloned_pipe = clone(pipe)
     grid = GridSearchCV(cloned_pipe, param_grid, cv=cv, scoring='roc_auc', n_jobs=-1, verbose=0)
-    grid.fit(X_train, y_train)
+    # 👉 Check if the underlying estimator accepts early_stopping_rounds
+    fit_signature = inspect.signature(grid.estimator.fit)
+    if "early_stopping_rounds" in fit_signature.parameters:
+        grid.fit(X_train, y_train, early_stopping_rounds=40, eval_set=[(X_valid, y_valid)], verbose=False)
+    else:
+        grid.fit(X_train, y_train)
 
     best_model = grid.best_estimator_
     best_models[name] = best_model
@@ -249,4 +237,3 @@ def run_model_with_gridsearch(name, pipe, param_grid, X_train_full, y_train, X_v
     
     print(f"✅ Finished: {name}\n")
     return best_model
-

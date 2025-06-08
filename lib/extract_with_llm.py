@@ -12,8 +12,8 @@ from datetime import datetime
 # --- CONFIGURE GOOGLE API ---
 load_dotenv()
 configure(api_key=os.environ["GOOGLE_API_KEY"])
-model = GenerativeModel("gemini-1.5-flash-8b")
-
+model = GenerativeModel("gemini-2.0-flash-lite")
+#Gemini 2.0 Flash-Lite
 # --- SETTINGS ---
 TEXT_COLUMN = "article_text"
 DESC_COLUMN = "description"
@@ -56,7 +56,11 @@ Read and understand the following news article in its original language. Then, e
 
 4. If no entities or relationships are found, return this structure with empty lists.
 
-5. Indicate if the text is relevant to the German or French elections.
+5. Analyze the text and determine its relevance to the topic of the german or french elections,
+        which includes discussions about political parties, candidates, voting processes, election campaigns, debates, and poll results.
+        If the text is relevant to the topic, respond with "1".  
+        If the text is not relevant, respond with "0". 
+        Provide only the number as the response. 
 
 Reply ONLY in this exact JSON format, and in English:
 
@@ -76,7 +80,7 @@ Reply ONLY in this exact JSON format, and in English:
       "sentiment": "FRIENDLY"
     }}
   ],
-  "relevant_to_german_or_french_elections": true
+  "is_relevant": 1
 }}
 
 Text:
@@ -147,7 +151,7 @@ def main(source):
         except Exception as e:
             if "rate limit" in str(e).lower() or "quota" in str(e).lower() or "429" in str(e):
                 print(f"[RATE LIMIT] row {i} ({row_id}): {e}")
-                wait_time = 60
+                wait_time = 15
                 print(f"⏳ Waiting {wait_time} seconds before retrying...")
                 time.sleep(wait_time)
                 try:
@@ -174,7 +178,7 @@ def main(source):
                 parsed = json.loads(cleaned_json)
                 extracted_entities = parsed.get("entities", {})
                 relationships = parsed.get("entity_relationships", [])
-                relevant_to_elections = parsed.get("relevant_to_german_or_french_elections", None)
+                relevant_to_elections = parsed.get("is_relevant", None)
             except Exception as parse_error:
                 print(f"[JSON ERROR] row {i} ({row_id}): {parse_error}")
                 errors.append({"url": row_id, "error": str(parse_error)})
@@ -184,7 +188,7 @@ def main(source):
             "lang": lang,
             "extracted_entities": extracted_entities,
             "entity_relationships": relationships,
-            "relevant_to_german_or_french_elections": relevant_to_elections
+            "is_relevant": relevant_to_elections
         }
 
         results.append(row_result)
